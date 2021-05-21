@@ -417,33 +417,10 @@ export default class Parser {
 					}
 
 					break;
-
+				
 				case 2:
 
 					const colorGetter = createColorGetter( depth );
-
-					for ( let y = height; y--; ) {
-
-						let index = indexY;
-
-						for ( let x = width; x--; ) {
-
-							const color = bytes.slice( byteOffset, byteOffset += byteSize )[ 0 ];
-
-							data[ index ]     = color;
-							data[ index + 1 ] = color;
-							data[ index + 2 ] = color;
-							data[ index + 3 ] = color;
-
-							index += 4;
-						}
-
-						indexY -= width4;
-					}
-
-					break;
-				
-				case 3:
 
 					for ( let y = height; y--; ) {
 
@@ -457,6 +434,29 @@ export default class Parser {
 							data[ index + 1 ] = color >>> 16 & 255;
 							data[ index + 2 ] = color >>> 8  & 255;
 							data[ index + 3 ] = color        & 255;
+
+							index += 4;
+						}
+
+						indexY -= width4;
+					}
+
+					break;
+
+				case 3:
+
+					for ( let y = height; y--; ) {
+
+						let index = indexY;
+
+						for ( let x = width; x--; ) {
+
+							const color = bytes.slice( byteOffset, byteOffset += byteSize )[ 0 ];
+
+							data[ index ]     = color;
+							data[ index + 1 ] = color;
+							data[ index + 2 ] = color;
+							data[ index + 3 ] = color;
 
 							index += 4;
 						}
