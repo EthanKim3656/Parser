@@ -32,9 +32,7 @@ export default class Parser {
 
 		for ( const key in attributes ) {
 
-			const regex = RegExp( `^${ key }.+`, "gm" );
-
-			const lines = file.match( regex ) ?? [];
+			const lines = file.match( RegExp( `^${ key }.+`, "gm" ) ) ?? [];
 			const data  = lines.join``.match( /[\d\.]+/g );
 			
 			attributes[ key ] = data;
@@ -96,7 +94,7 @@ export default class Parser {
 
 		const newObjectGroup = library => {
 
-			const group   = [];
+			const group = [];
 
 			group.library = library;
 
@@ -138,9 +136,7 @@ export default class Parser {
 
 		newObjectGroup( "Library_0" );
 
-		const regex = /^[fgos(mtllib)(usemtl)].+/gm;
-
-		const objectData = file.match( regex );
+		const objectData = file.match( /^[fgos(mtllib)(usemtl)].+/gm );
 
 		for ( const line of objectData ) {
 
@@ -237,7 +233,7 @@ export default class Parser {
 
 		// https://www.ryanjuckett.com/parsing-colors-in-a-tga-file/
 		// https://en.wikipedia.org/wiki/Truevision_TGA
-		// https://gist.github.com/szimek/763999
+		// http://tfc.duke.free.fr/coding/tga_specs.pdf
 
 		tgaFile = path + tgaFile;
 
@@ -261,16 +257,102 @@ export default class Parser {
 
 		let byteOffset = 18 + bytes[ 0 ];
 
-		const imageId  = bytes.slice( 18, byteOffset );
+		const createColorGetter = ( depth ) => {
+
+			let colorGetter;
+
+			switch ( depth ) {
+
+				case 15:
+
+					colorGetter = bytes => {
+
+						const byte0 = bytes[ 0 ];
+						const byte1 = bytes[ 1 ];
+
+						let red   = byte1 >>> 2 & 0x1F;
+						let green = ( byte1 << 3 & 0x1C ) | ( byte0 >>> 5 & 0x07 );
+						let blue  = byte0 & 0x1F;
+
+						red   = red   << 3 | red   >>> 2;
+						green = green << 3 | green >>> 2;
+						blue  = blue  << 3 | blue  >>> 2;
+
+						return red << 24 | green << 16 | blue << 8 | 255;
+					};
+
+					break;
+
+				case 16:
+
+					colorGetter = bytes => {
+
+						const byte0 = bytes[ 0 ];
+						const byte1 = bytes[ 1 ];
+
+						let red   = byte1 >>> 2 & 0x1F;
+						let green = ( byte1 << 3 & 0x1C ) | ( byte0 >>> 5 & 0x07 );
+						let blue  = byte0 & 0x1F;
+						const alpha = 255 * ( byte1 >>> 7 & 1 );
+
+						red   = red   << 3 | red   >>> 2;
+						green = green << 3 | green >>> 2;
+						blue  = blue  << 3 | blue  >>> 2;
+
+						return red << 24 | green << 16 | blue << 8 | alpha;
+					};
+
+					break;
+
+				case 24:
+
+					colorGetter = bytes => {
+
+						return bytes[ 2 ] << 24 | bytes[ 1 ] << 16 | bytes[ 0 ] << 8 | 255;
+					};
+
+					break;
+
+				case 32:
+
+					colorGetter = bytes => {
+
+						return bytes[ 3 ] << 24 | bytes[ 2 ] << 16 | bytes[ 1 ] << 8 | bytes[ 0 ];
+					};
+
+					break;
+			}
+
+			return colorGetter;
+		};
 
 		const colorMap = (() => {
 
-			const type       = bytes[ 1 ];
+			const type = bytes[ 1 ];
+
+			if ( !type ) return;
 
 			const firstIndex = bytes[ 3 ] | bytes[ 4 ] << 8;
 			const length     = bytes[ 5 ] | bytes[ 6 ] << 8;
+			const depth      = bytes[ 7 ];
 
-			const bitDepth   = bytes[ 7 ];
+			const byteSize = Math.ceil( depth / 8 );
+
+			byteOffset += byteSize * firstIndex;
+
+			const colorGetter = createColorGetter( depth );
+
+			const dataLength = length - firstIndex;
+			const data = new Uint32Array( dataLength );
+
+			for ( let index = 0; index < dataLength; index++ ) {
+				
+				const color = colorGetter( bytes.slice( byteOffset, byteOffset += byteSize ) );
+
+				data[ index ] = color;
+			}
+
+			return data;
 		})();
 
 		return (() => {
@@ -279,107 +361,111 @@ export default class Parser {
 
 			if ( !type ) return;
 
-			const originX = bytes[ 8 ]  | bytes[ 9 ]  << 8;
-			const originY = bytes[ 10 ] | bytes[ 11 ] << 8;
-
-			const width   = bytes[ 12 ] | bytes[ 13 ] << 8;
-			const height  = bytes[ 14 ] | bytes[ 15 ] << 8;
-
-			const depth   = bytes[ 16 ];
-
+			const originX    = bytes[ 8 ]  | bytes[ 9 ]  << 8;
+			const originY    = bytes[ 10 ] | bytes[ 11 ] << 8;
+			const width      = bytes[ 12 ] | bytes[ 13 ] << 8;
+			const height     = bytes[ 14 ] | bytes[ 15 ] << 8;
+			const depth      = bytes[ 16 ];
 			const descriptor = bytes[ 17 ];
 
 			const byteSize = Math.ceil( depth / 8 );
 
-			let index = width * height * 4;
+			const width4 = width << 2;
+			let indexY = height * width << 2;
 
-			const data = new Uint8ClampedArray( index );
-
-			let getPixelData;
+			const dataLength = width * height << 2;
+			const data = new Uint8ClampedArray( dataLength );
 
 			switch ( type & 7 ) {
 
 				case 1:
 
+					let getIndex;
+
+					if ( depth > 8 ) {
+
+						getIndex = bytes => {
+
+							return bytes[ 0 ] | bytes[ 1 ] << 8;
+						};
+					} else {
+
+						getIndex = bytes => {
+
+							return bytes[ 0 ];
+						};
+					}
+
+					for ( let y = height; y--; ) {
+
+						let index = indexY;
+
+						for ( let x = width; x--; ) {
+
+							const colorIndex = getIndex( bytes.slice( byteOffset, byteOffset += byteSize ) );
+							const color = colorMap[ colorIndex ];
+
+							data[ index ]     = color >>> 24;
+							data[ index + 1 ] = color >>> 16 & 255;
+							data[ index + 2 ] = color >>> 8  & 255;
+							data[ index + 3 ] = color        & 255;
+
+							index += 4;
+						}
+
+						indexY -= width4;
+					}
+
 					break;
 
 				case 2:
 
-					switch ( depth ) {
+					const colorGetter = createColorGetter( depth );
 
-						case 15:
+					for ( let y = height; y--; ) {
 
-							getPixelData = pixel => {
+						let index = indexY;
 
-								const pixel0 = pixel[ 0 ];
-								const pixel1 = pixel[ 1 ];
+						for ( let x = width; x--; ) {
 
-								const red   = pixel1 >>> 2 & 0x1F;
-								const green = ( pixel1 << 3 & 0x1C ) | ( pixel0 >>> 5 & 0x07 );
-								const blue  = pixel0 & 0x1F;
-								const alpha = 255;
+							const color = bytes.slice( byteOffset, byteOffset += byteSize )[ 0 ];
 
-								data[ index ]     = red   << 3 | red   >>> 2;
-								data[ index + 1 ] = green << 3 | green >>> 2;
-								data[ index + 2 ] = blue  << 3 | blue  >>> 2;
-								data[ index + 3 ] = alpha;
-							};
+							data[ index ]     = color;
+							data[ index + 1 ] = color;
+							data[ index + 2 ] = color;
+							data[ index + 3 ] = color;
 
-							break;
+							index += 4;
+						}
 
-						case 16:
-
-							getPixelData = pixel => { 
-
-								const pixel0 = pixel[ 0 ];
-								const pixel1 = pixel[ 1 ];
-
-								const red   = pixel1 >>> 2 & 0x1F;
-								const green = ( pixel1 << 3 & 0x1C ) | ( pixel0 >>> 5 & 0x07 );
-								const blue  = pixel0 & 0x1F;
-								const alpha = 255 * ( pixel1 >>> 7 & 1 );
-
-								data[ index ]     = red   << 3 | red   >>> 2;
-								data[ index + 1 ] = green << 3 | green >>> 2;
-								data[ index + 2 ] = blue  << 3 | blue  >>> 2;
-								data[ index + 3 ] = alpha;
-							};
-
-							break;
-
-						case 24:
-
-							getPixelData = pixel => {
-
-								data[ index ] = pixel[ 2 ];
-								data[ index + 1 ] = pixel[ 1 ];
-								data[ index + 2 ] = pixel[ 0 ];
-								data[ index + 3 ] = 255;
-							};
-
-							break;
-
-						case 32:
-
-							getPixelData = pixel => {
-
-								data[ index ] = pixel[ 3 ];
-								data[ index + 1 ] = pixel[ 2 ];
-								data[ index + 2 ] = pixel[ 1 ];
-								data[ index + 3 ] = pixel[ 0 ];
-							};
-
-							break;
+						indexY -= width4;
 					}
 
 					break;
 				
-				case 2:
+				case 3:
+
+					for ( let y = height; y--; ) {
+
+						let index = indexY;
+
+						for ( let x = width; x--; ) {
+
+							const color = colorGetter( bytes.slice( byteOffset, byteOffset += byteSize ) );
+
+							data[ index ]     = color >>> 24;
+							data[ index + 1 ] = color >>> 16 & 255;
+							data[ index + 2 ] = color >>> 8  & 255;
+							data[ index + 3 ] = color        & 255;
+
+							index += 4;
+						}
+
+						indexY -= width4;
+					}
 
 					break;
 			}
-
-			for( ; index -= 4; ) getPixelData( bytes.slice( byteOffset, byteOffset += byteSize ) );
 
 			return {
 				
