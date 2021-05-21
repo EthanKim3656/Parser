@@ -234,6 +234,7 @@ export default class Parser {
 		// https://www.ryanjuckett.com/parsing-colors-in-a-tga-file/
 		// https://en.wikipedia.org/wiki/Truevision_TGA
 		// http://tfc.duke.free.fr/coding/tga_specs.pdf
+		// https://github.com/vthibault/roBrowser/blob/master/src/Loaders/Targa.js
 
 		tgaFile = path + tgaFile;
 
@@ -253,7 +254,7 @@ export default class Parser {
 			return;
 		}
 
-		const bytes = new Uint8Array( file );
+		let bytes = new Uint8Array( file );
 
 		let byteOffset = 18 + bytes[ 0 ];
 
@@ -343,6 +344,7 @@ export default class Parser {
 			const colorGetter = createColorGetter( depth );
 
 			const dataLength = length - firstIndex;
+
 			const data = new Uint32Array( dataLength );
 
 			for ( let index = 0; index < dataLength; index++ ) {
@@ -371,10 +373,54 @@ export default class Parser {
 			const byteSize = Math.ceil( depth / 8 );
 
 			const width4 = width << 2;
-			let indexY = height * width << 2;
 
-			const dataLength = width * height << 2;
+			const length = width * height;
+
+			const dataLength = length << 2;
+
+			let indexY = dataLength;
+
 			const data = new Uint8ClampedArray( dataLength );
+
+			if ( type & 8 ) {
+
+				const byteLength = length * byteSize;
+
+				const compressed = bytes.slice( byteOffset );
+				const decompressed = new Uint8Array( byteLength );
+
+				let index0 = 0;
+				let index1 = 0;
+
+				while ( index1 < byteLength - 100 ) {
+
+					const type  = compressed[ index0++ ];
+					const count = ( type & 127 ) + 1;
+
+					if ( type & 128 ) {
+
+						const bytes = compressed.slice( index0, index0 += byteSize );
+
+						for ( let i = 0; i < count; i++ ) {
+
+							decompressed.set( bytes, index1);
+
+							index1 += byteSize;
+						}
+					} else {
+
+						const length = count * byteSize;
+						const bytes = compressed.slice( index0, index0 += length );
+
+						decompressed.set( bytes, index1);
+
+						index1 += length;
+					}
+				}
+
+				bytes = decompressed;
+				byteOffset = 0;
+			}
 
 			switch ( type & 7 ) {
 

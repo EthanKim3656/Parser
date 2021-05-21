@@ -7,10 +7,11 @@ const test = new Parser;
 
 // Fix code tomorrow- Tga parser is awful
 
-// sample_640×426.tga - true-color test
-// football_seal.tga  - colorMap test
+// sample_640×426.tga - True-color test
+// football_seal.tga  - ColorMap test
+// shuttle.tga        - RLE test
 
-const tga = await test.parseTga("sample_640×426.tga");
+const tga = await test.parseTga("shuttle.tga");
 
 var canvas, ctx;
 
