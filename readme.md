@@ -2,9 +2,9 @@
 Todo:
 - [x] .obj parser
 - [x] .mtl parser
-- [ ] .tga parser
+- [x] .tga parser
+- [ ] .ply parser
 - [ ] .glTF parser
 - [ ] .stl parser
-- [ ] .ply parser
 - [ ] .dae parser
 - [ ] .x3d parser

@@ -392,16 +392,16 @@ export default class Parser {
 				let index0 = 0;
 				let index1 = 0;
 
-				while ( index1 < byteLength - 100 ) {
+				while ( index1 < byteLength ) {
 
-					const type  = compressed[ index0++ ];
-					const count = ( type & 127 ) + 1;
+					const type = compressed[ index0++ ];
+					let count  = ( type & 127 ) + 1;
 
 					if ( type & 128 ) {
 
 						const bytes = compressed.slice( index0, index0 += byteSize );
 
-						for ( let i = 0; i < count; i++ ) {
+						for ( ; count--; ) {
 
 							decompressed.set( bytes, index1);
 
@@ -409,12 +409,13 @@ export default class Parser {
 						}
 					} else {
 
-						const length = count * byteSize;
-						const bytes = compressed.slice( index0, index0 += length );
+						count *= byteSize;
+
+						const bytes = compressed.slice( index0, index0 += count );
 
 						decompressed.set( bytes, index1);
 
-						index1 += length;
+						index1 += count;
 					}
 				}
 
@@ -520,5 +521,10 @@ export default class Parser {
 				height
 			};
 		})();
+	}
+
+	async parsePly ( plyFile, path = "./Imports/" ) {
+
+
 	}
 };
