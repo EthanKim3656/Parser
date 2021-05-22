@@ -254,6 +254,8 @@ export default class Parser {
 			return;
 		}
 
+		const millis = ( new Date() ).getTime();
+
 		let bytes = new Uint8Array( file );
 
 		let byteOffset = 18 + bytes[ 0 ];
@@ -372,56 +374,15 @@ export default class Parser {
 
 			const byteSize = Math.ceil( depth / 8 );
 
-			const width4 = width << 2;
-
 			const length = width * height;
 
 			const dataLength = length << 2;
 
-			let indexY = dataLength;
+			const width4 = width << 2;
 
 			const data = new Uint8ClampedArray( dataLength );
 
-			if ( type & 8 ) {
-
-				const byteLength = length * byteSize;
-
-				const compressed = bytes.slice( byteOffset );
-				const decompressed = new Uint8Array( byteLength );
-
-				let index0 = 0;
-				let index1 = 0;
-
-				while ( index1 < byteLength ) {
-
-					const type = compressed[ index0++ ];
-					let count  = ( type & 127 ) + 1;
-
-					if ( type & 128 ) {
-
-						const bytes = compressed.slice( index0, index0 += byteSize );
-
-						for ( ; count--; ) {
-
-							decompressed.set( bytes, index1);
-
-							index1 += byteSize;
-						}
-					} else {
-
-						count *= byteSize;
-
-						const bytes = compressed.slice( index0, index0 += count );
-
-						decompressed.set( bytes, index1);
-
-						index1 += count;
-					}
-				}
-
-				bytes = decompressed;
-				byteOffset = 0;
-			}
+			let getRGBA;
 
 			switch ( type & 7 ) {
 
@@ -431,36 +392,17 @@ export default class Parser {
 
 					if ( depth > 8 ) {
 
-						getIndex = bytes => {
-
-							return bytes[ 0 ] | bytes[ 1 ] << 8;
-						};
+						getIndex = bytes => bytes[ 0 ] | bytes[ 1 ] << 8;
 					} else {
 
-						getIndex = bytes => {
-
-							return bytes[ 0 ];
-						};
+						getIndex = bytes => bytes[ 0 ];
 					}
 
-					for ( let y = height; y--; ) {
+					getRGBA = bytes => {
 
-						let index = indexY;
+						const colorIndex = getIndex( bytes );
 
-						for ( let x = width; x--; ) {
-
-							const colorIndex = getIndex( bytes.slice( byteOffset, byteOffset += byteSize ) );
-							const color = colorMap[ colorIndex ];
-
-							data[ index ]     = color >>> 24;
-							data[ index + 1 ] = color >>> 16 & 255;
-							data[ index + 2 ] = color >>> 8  & 255;
-							data[ index + 3 ] = color        & 255;
-
-							index += 4;
-						}
-
-						indexY -= width4;
+						return colorMap[ colorIndex ];
 					}
 
 					break;
@@ -469,50 +411,91 @@ export default class Parser {
 
 					const colorGetter = createColorGetter( depth );
 
-					for ( let y = height; y--; ) {
-
-						let index = indexY;
-
-						for ( let x = width; x--; ) {
-
-							const color = colorGetter( bytes.slice( byteOffset, byteOffset += byteSize ) );
-
-							data[ index ]     = color >>> 24;
-							data[ index + 1 ] = color >>> 16 & 255;
-							data[ index + 2 ] = color >>> 8  & 255;
-							data[ index + 3 ] = color        & 255;
-
-							index += 4;
-						}
-
-						indexY -= width4;
-					}
+					getRGBA = bytes => colorGetter( bytes );
 
 					break;
 
 				case 3:
 
-					for ( let y = height; y--; ) {
+					getRGBA = bytes => {
+						
+						const color = bytes[ 0 ];
 
-						let index = indexY;
-
-						for ( let x = width; x--; ) {
-
-							const color = bytes.slice( byteOffset, byteOffset += byteSize )[ 0 ];
-
-							data[ index ]     = color;
-							data[ index + 1 ] = color;
-							data[ index + 2 ] = color;
-							data[ index + 3 ] = color;
-
-							index += 4;
-						}
-
-						indexY -= width4;
-					}
+						return color << 24 | color << 16 | color << 8 | 255;
+					};
 
 					break;
 			}
+
+			if ( type & 8 ) {
+
+				let index = dataLength - 4;
+
+				while ( index > -4 ) {
+
+					const type = bytes[ byteOffset++ ];
+					let count  = ( type & 127 ) + 1;
+
+					if ( type & 128 ) {
+
+						const color = getRGBA( bytes.slice( byteOffset, byteOffset += byteSize ) );
+
+						const red   = color >>> 24;
+						const green = color >>> 16 & 255;
+						const blue  = color >>> 8  & 255;
+						const alpha = color        & 255;
+
+						for ( ; count--; index -= 4 ) {
+
+							data[ index + 3 ] = red;
+							data[ index + 2 ] = green;
+							data[ index + 1 ] = blue;
+							data[ index ]     = alpha;
+						}
+					} else {
+
+						for ( ; count--; index -= 4 ) {
+
+							const color = getRGBA( bytes.slice( byteOffset, byteOffset += byteSize ) );
+
+							data[ index + 3 ] = color >>> 24;
+							data[ index + 2 ] = color >>> 16 & 255;
+							data[ index + 1 ] = color >>> 8  & 255;
+							data[ index ]     = color        & 255;
+						}
+					}
+				}
+
+				let offset = 0;
+				let indexY = 0;
+
+				for ( let y = height; y--; indexY += width4 ) {
+
+					const row = data.slice( offset, offset += width4 );
+
+					data.set( row.reverse(), indexY );
+				}
+			} else {
+
+				let indexY = dataLength;
+
+				for ( let y = height; y--; indexY -= width4 ) {
+
+					let index = indexY;
+
+					for ( let x = width; x--; index += 4 ) {
+
+						const color = getRGBA( bytes.slice( byteOffset, byteOffset += byteSize ) );
+						
+						data[ index ]     = color >>> 24;
+						data[ index + 1 ] = color >>> 16 & 255;
+						data[ index + 2 ] = color >>> 8  & 255;
+						data[ index + 3 ] = color        & 255;
+					}
+				}
+			}
+
+			console.log( ( new Date() ).getTime() - millis );
 
 			return {
 				
