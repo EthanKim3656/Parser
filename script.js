@@ -1,33 +1,95 @@
 
-import Parser from "./parser.js";
+import Parser   from "./Modules/parser.js";
+import Renderer from "./Modules/renderer.js";
 
-const test = new Parser;
+const renderer = new Renderer;
+const parser   = new Parser;
 
 // https://people.math.sc.edu/Burkardt/data/data.html
 
-// Fix code tomorrow- Tga parser is awful
+/**
+ * .obj files:
+ * al.obj             - Materials/no texcoords test
+ * manilla.obj        - No materials/no texcoords test
+ * 
+ * .tga files:
+ * sample_640×426.tga - True-color test
+ * football_seal.tga  - ColorMap test
+ * shuttle.tga        - RLE test
+ * 
+ * .ply files:
+ * airplane.ply       - ASCII 1.0 test
+ */
 
-// sample_640×426.tga - True-color test
-// football_seal.tga  - ColorMap test
-// shuttle.tga        - RLE test
+const gl = renderer.gl;
 
-const tga = await test.parseTga("shuttle.tga");
+gl.clearColor( 0, 0, 0, 1 );
+gl.enable(gl.DEPTH_TEST);
+gl.depthFunc(gl.LEQUAL);
+gl.enable(gl.CULL_FACE);
 
-var canvas, ctx;
+gl.clear( gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT );
 
-canvas  = document.createElement('canvas');
-ctx     = canvas.getContext('2d');
+const program = renderer.createProgram(
 
-const {
+	await fetch("./Shaders/vsh.glsl").then(i => i.text()),
+	await fetch("./Shaders/fsh.glsl").then(i => i.text())
+);
 
-	data,
-	width,
-	height
-} = tga;
+gl.useProgram(program);
 
-canvas.width  = width;
-canvas.height = height;
+const l_cam = gl.getUniformLocation(program, "u_cam");
+const l_all = gl.getUniformLocation(program, "u_all");
 
-ctx.putImageData(new ImageData(data, width, height), 0, 0);
+let rx = 0;
+let ry = -0.3;
+let cam = [0, -2, -3];
 
-document.body.appendChild(canvas);
+let down = 0;
+
+const aspect = renderer.aspect;
+const matrix = renderer.allMatrix(Math.PI * 0.5, aspect, 0.01, 45);
+let all = matrix(rx, ry);
+
+renderer.canvas.addEventListener("mousemove", n => {
+
+    if(down) {
+
+        rx += n.movementX / 100;
+        ry -= n.movementY / 100;
+		
+        all = matrix(rx, ry);
+    }
+});
+
+renderer.canvas.addEventListener("mousedown", () => down = 1);
+renderer.canvas.addEventListener("mouseup", () => down = 0);
+renderer.canvas.addEventListener("mouseout", () => down = 0);
+
+const draw = [];
+
+const obj = await parser.parseObj("al.obj");
+
+obj.forEach( objectGroup => {
+
+	objectGroup.geometry.forEach( object => {
+
+		draw.push( renderer.createVAO( program, object.positions, object.normals ) )
+	});
+});
+
+const test = renderer.cube( program, -1, -1, -1, 2, 2, 2 );
+
+const scene = () => {
+
+	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    gl.uniformMatrix4fv(l_all, false, all);
+    gl.uniform3fv(l_cam, cam);
+
+	draw.forEach( i => i() );
+
+	window.requestAnimationFrame(scene);
+};
+
+scene();
