@@ -1,4 +1,9 @@
 
+/**
+ * Ethan Kim
+ * https://github.com/EthanKim8683
+ */
+
 export default class Parser {
 
 	async parseObj ( objFile, path = "./Imports/" ) {
@@ -23,37 +28,26 @@ export default class Parser {
 			return;
 		}
 
-		const attributes = {
+		const vLines  = file.match( /^v.+/gm )  ?? [];
+		const vtLines = file.match( /^vt.+/gm ) ?? [];
+		const vnLines = file.match( /^vn.+/gm ) ?? [];
 
-			"v" : [],
-			"vt": [],
-			"vn": []
-		};
-
-		for ( const key in attributes ) {
-
-			const lines = file.match( RegExp( `^${ key }.+`, "gm" ) ) ?? [];
-			const data  = lines.map( line => line.match( /[\d-\.]+/g ) );
-			
-			attributes[ key ] = data;
-		}
-
-		const positions = attributes.v;
-		const texcoords = attributes.vt;
-
-		const vn = attributes.vn;
+		const positions =  vLines.map( line => line.match( /[\d\.-]+/g ) );
+		const texcoords = vtLines.map( line => line.match( /[\d\.-]+/g ) );
+		const vnData    = vnLines.map( line => line.match( /[\d\.-]+/g ) );
 		
-		const vnLength = vn.length;
+		const vnLength = vnData.length;
 
 		let smooth = false;
 
 		let normals;
+
 		let mapTriangle;
 		let mapObject;
 
 		if ( vnLength ) {
 
-			normals = vn;
+			normals = vnData;
 
 			mapTriangle = ( vertex0, vertex1, vertex2 ) => [
 
@@ -221,17 +215,9 @@ export default class Parser {
 
 				return [
 
-					position0x,
-					position0y,
-					position0z,
-
-					position1x,
-					position1y,
-					position1z,
-
-					position2x,
-					position2y,
-					position2z,
+					position0x, position0y, position0z,
+					position1x, position1y, position1z,
+					position2x, position2y, position2z,
 
 					vertex0[ 1 ] - 1,
 					vertex1[ 1 ] - 1,
@@ -250,7 +236,7 @@ export default class Parser {
 				const smooth = object.smooth;
 				const length = object.length;
 
-				let positionIndex = 0;
+				let positionIndex = -9;
 				let texcoordIndex = -2;
 				let normalIndex   = -3;
 
@@ -275,23 +261,13 @@ export default class Parser {
 
 				object.forEach( data => {
 
-					thisPositions[ positionIndex++ ] = data[ 0 ];
-					thisPositions[ positionIndex++ ] = data[ 1 ];
-					thisPositions[ positionIndex++ ] = data[ 2 ];
+					thisPositions.set( data.splice( 0, 9 ), positionIndex += 9 );
 
-					thisPositions[ positionIndex++ ] = data[ 3 ];
-					thisPositions[ positionIndex++ ] = data[ 4 ];
-					thisPositions[ positionIndex++ ] = data[ 5 ];
+					thisTexcoords.set( texcoords[ data[ 0 ] ], texcoordIndex += 2 );
+					thisTexcoords.set( texcoords[ data[ 1 ] ], texcoordIndex += 2 );
+					thisTexcoords.set( texcoords[ data[ 2 ] ], texcoordIndex += 2 );
 
-					thisPositions[ positionIndex++ ] = data[ 6 ];
-					thisPositions[ positionIndex++ ] = data[ 7 ];
-					thisPositions[ positionIndex++ ] = data[ 8 ];
-
-					thisTexcoords.set( texcoords[ data[ 9  ] ], texcoordIndex += 2 );
-					thisTexcoords.set( texcoords[ data[ 10 ] ], texcoordIndex += 2 );
-					thisTexcoords.set( texcoords[ data[ 11 ] ], texcoordIndex += 2 );
-
-					addNormals( data[ 12 ], data[ 13 ], data[ 14 ] );
+					addNormals( data[ 3 ], data[ 4 ], data[ 5 ] );
 				});
 
 				return {
@@ -308,7 +284,7 @@ export default class Parser {
 				const smooth = object.smooth;
 				const length = object.length * 9;
 
-				let positionIndex = 0;
+				let positionIndex = -9;
 				let normalIndex   = -3;
 
 				const thisPositions = new Float32Array( length );
@@ -328,19 +304,9 @@ export default class Parser {
 
 				object.forEach( data => {
 
-					thisPositions[ positionIndex++ ] = data[ 0 ];
-					thisPositions[ positionIndex++ ] = data[ 1 ];
-					thisPositions[ positionIndex++ ] = data[ 2 ];
+					thisPositions.set( data.splice( 0, 9 ), positionIndex += 9 );
 
-					thisPositions[ positionIndex++ ] = data[ 3 ];
-					thisPositions[ positionIndex++ ] = data[ 4 ];
-					thisPositions[ positionIndex++ ] = data[ 5 ];
-
-					thisPositions[ positionIndex++ ] = data[ 6 ];
-					thisPositions[ positionIndex++ ] = data[ 7 ];
-					thisPositions[ positionIndex++ ] = data[ 8 ];
-
-					addNormals( data[ 12 ], data[ 13 ], data[ 14 ] );
+					addNormals( data[ 3 ], data[ 4 ], data[ 5 ] );
 				});
 
 				return {
@@ -405,7 +371,6 @@ export default class Parser {
 			thisObjectGroup.push( object );
 
 			thisObject = object;
-
 			thisObjectEmpty = true;
 		};
 
@@ -511,14 +476,19 @@ export default class Parser {
 			});
 		}
 
-		return objectGroups.map( objectGroup => {
+		return {
+			
+			groups: objectGroups.map( objectGroup => {
 
-			return {
+				return {
 
-				geometry: objectGroup.map( mapObject ),
-				library: objectGroup.library
-			};
-		});
+					geometry: objectGroup.map( mapObject ),
+					library: objectGroup.library
+				};
+			}),
+
+			libraries
+		};
 	}
 
 	async parseMtl ( mtlFile, path = "./Imports/" ) {
@@ -563,6 +533,8 @@ export default class Parser {
 
 				"Tf"    : undefined,
 				"Ni"    : undefined,
+
+				"illum" : undefined,
 
 				"map_Ka": undefined,
 				"map_Kd": undefined,
@@ -884,5 +856,80 @@ export default class Parser {
 		}
 
 		const header = file.match( /(?<=^ply\n)[\S\s]+?(?=\nend_header)/gm );
+	}
+
+	async parseHdr ( hdrFile, path = "./Imports/" ) {
+
+		// https://en.wikipedia.org/wiki/Radiance_(software)#HDR_image_format
+		// http://paulbourke.net/dataformats/pic/
+		// https://programmersought.com/article/56978111948/
+
+		hdrFile = path + hdrFile;
+
+		let ok;
+
+		const file = await fetch( hdrFile ).then( i => {
+			
+			ok = i.ok 
+
+			return i.arrayBuffer();
+		});
+
+		if ( !ok ) {
+
+			console.log( "Failed to fetch .hdr file: " + hdrFile );
+
+			return;
+		}
+
+		let bytes = new Uint8Array( file );
+
+		let byteOffset = 0;
+		let header = "";
+
+		let char;
+		let stage = 0;
+
+		do {
+
+			char = String.fromCharCode( bytes[ byteOffset++ ] );
+
+			header += char;
+
+			stage += stage ? char === "\n" : char === "X";
+		} while ( stage < 2 );
+
+		const gamma     = ( header.match( /(?<=^GAMMA=).+/gm ) ?? [ 1 ] )[ 0 ];
+		const primaries = header.match( /(?<=^PRIMARIES=).+/gm );
+		const format    = header.match( /(?<=^FORMAT=).+/gm )[ 0 ];
+		const height    = header.match( /(?<=Y ).+?(?= )/gm )[ 0 ];
+		const width     = header.match( /(?<=X ).+?(?= |\n)/gm )[ 0 ];
+
+		bytes = bytes.slice( byteOffset );
+
+		console.log( format );
+
+		const getRGB = ( bytes ) => {
+
+			const e = bytes[ 3 ];
+
+			if ( e === 0 ) {
+
+				return [ 0, 0, 0 ];
+			}
+
+			const f = 2 ** ( e - 136 );
+
+			return [
+
+				bytes[ 0 ] * f,
+				bytes[ 1 ] * f,
+				bytes[ 2 ] * f 
+			];
+		};
+
+		let off = 1;
+
+		console.log( getRGB( bytes.slice( off, off + 4 ) ) );
 	}
 };

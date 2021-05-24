@@ -12,9 +12,9 @@ out vec4 color;
 const vec3 light_source = vec3(70., 80., 200.);
 
 const float spec_power     = 32.;
-const float spec_intensity = 1.;
+const float spec_intensity = 4.;
 
-const vec3 diffuse_color = vec3( 1., 1., 1. );
+const vec3 diffuse_color = vec3( 0.5, 0.35, 0.15 );
 
 void main () {
 
