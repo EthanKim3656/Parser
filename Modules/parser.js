@@ -1,7 +1,13 @@
 
 /**
- * Ethan Kim
- * https://github.com/EthanKim8683
+ *                     Parser.js
+ * 
+ *               Written by Ethan Kim
+ * 
+ *      github: https://github.com/EthanKim8683
+ *           email: ethankim8683@gmail.com
+ * 
+ *              Last modified 5/23/2021
  */
 
 export default class Parser {
@@ -28,13 +34,13 @@ export default class Parser {
 			return;
 		}
 
-		const vLines  = file.match( /^v.+/gm )  ?? [];
-		const vtLines = file.match( /^vt.+/gm ) ?? [];
-		const vnLines = file.match( /^vn.+/gm ) ?? [];
+		const vLines  = file.match( /(?<=v ).+/gm )  ?? [];
+		const vtLines = file.match( /(?<=vt ).+/gm ) ?? [];
+		const vnLines = file.match( /(?<=vn ).+/gm ) ?? [];
 
-		const positions =  vLines.map( line => line.match( /[\d\.-]+/g ) );
-		const texcoords = vtLines.map( line => line.match( /[\d\.-]+/g ) );
-		const vnData    = vnLines.map( line => line.match( /[\d\.-]+/g ) );
+		const positions =  vLines.map( line => line.split` ` );
+		const texcoords = vtLines.map( line => line.split` ` );
+		const vnData    = vnLines.map( line => line.split` ` );
 		
 		const vnLength = vnData.length;
 
@@ -836,6 +842,7 @@ export default class Parser {
 	async parsePly ( plyFile, path = "./Imports/" ) {
 
 		// https://en.wikipedia.org/wiki/PLY_(file_format)
+		// http://paulbourke.net/dataformats/ply/
 
 		plyFile = path + plyFile;
 
@@ -845,7 +852,7 @@ export default class Parser {
 
 			ok = i.ok;
 			
-			return i.text();
+			return i.blob();
 		});
 
 		if ( !ok ) {
@@ -855,14 +862,314 @@ export default class Parser {
 			return;
 		}
 
-		const header = file.match( /(?<=^ply\n)[\S\s]+?(?=\nend_header)/gm );
+		const text = await file.text();
+
+		const header = text.match( /(?<=^ply\n)[\S\s]+?(?=\nend_header\n)/gm )[ 0 ];
+
+		const elements = ( header + "\nEOF" ).match( /(?<=^element )[\S\s]+?(?=\nelement|\nEOF)/gm );
+
+		if ( text.slice( 11, 20 ) === "ascii 1.0" ) {
+
+			const data = text.slice( header.length + 16 ).split`\n`;
+
+			let offset = 0;
+
+			let positions;
+			let texcoords;
+			let normals;
+			let colors;
+
+			let finalPositions = [];
+			let finalTexcoords = [];
+			let finalNormals   = [];
+			let finalColors    = [];
+
+			let hasTexcoords;
+			let hasNormals;
+			let hasColors;
+
+			elements.forEach( element => {
+
+				const header     = element.match( /.+/m )[ 0 ].split` `;
+				const attributes = element.match( /(?<=^property ).+/gm ).map( i => i.split` ` );
+
+				const name  = header[ 0 ];
+				const count = offset + +header[ 1 ];
+
+				let parser = `
+				
+					() => {
+						
+						const line = data[ offset ].trim().split\` \`;`;
+
+				switch ( name ) {
+
+					case "vertex":
+
+						const types = attributes.map( i => i[ 0 ] );
+						const names = attributes.map( i => i[ 1 ] );
+
+						const xIndex = names.indexOf( "x" );
+						const yIndex = names.indexOf( "y" );
+						const zIndex = names.indexOf( "z" );
+
+						const nxIndex = names.indexOf( "nx" );
+						const nyIndex = names.indexOf( "ny" );
+						const nzIndex = names.indexOf( "nz" );
+
+						const rIndex = names.indexOf( "red" );
+						const gIndex = names.indexOf( "green" );
+						const bIndex = names.indexOf( "blue" );
+
+						const uIndex = names.indexOf( "s" );
+						const vIndex = names.indexOf( "t" );
+
+						hasNormals   = nxIndex >= 0 && nyIndex >= 0 && nzIndex >= 0;
+						hasColors    = rIndex  >= 0 && gIndex  >= 0 && bIndex  >= 0;
+						hasTexcoords = uIndex  >= 0 && vIndex  >= 0;
+
+						positions = new Array( count );
+
+						positions.type = types[ xIndex ];
+
+						parser += `
+						
+							positions[ offset ] = [
+
+								line[ ${ xIndex } ],
+								line[ ${ yIndex } ],
+								line[ ${ zIndex } ]
+							];`;
+						
+						if ( hasNormals ) {
+
+							normals = new Array( count );
+
+							normals.type = types[ nxIndex ];
+
+							parser += `
+							
+								normals[ offset ] = [
+									
+									line[ ${ nxIndex } ],
+									line[ ${ nyIndex } ],
+									line[ ${ nzIndex } ]
+								];`;
+						}
+						
+						if ( hasColors ) {
+
+							colors = new Array( count );
+
+							colors.type = types[ rIndex ];
+
+							parser += `
+							
+								colors[ offset ] = [
+									
+									line[ ${ rIndex } ],
+									line[ ${ gIndex } ],
+									line[ ${ bIndex } ]
+								];`;
+						}
+						
+						if ( hasTexcoords ) {
+
+							texcoords = new Array( count );
+
+							texcoords.type = types[ uIndex ];
+
+							parser += `
+							
+								texcoords[ offset ] = [
+									
+									line[ ${ uIndex } ],
+									line[ ${ vIndex } ]
+								];`;
+						}
+						break;
+
+					case "face":
+
+						parser += `
+						
+							const indices = line.slice( 1 );
+
+							let length = line[ 0 ];
+							
+							const index0 = indices[ 0 ];
+							let index2 = indices[ --length ];
+							
+							for ( ; --length; ) {
+								
+								const index1 = indices[ length ];`;
+
+						if ( hasNormals ) {
+
+							parser += `
+
+								finalPositions.push(
+									
+									... positions[ index0 ],
+									... positions[ index1 ],
+									... positions[ index2 ]
+								);
+							
+								finalNormals.push(
+									
+									... normals[ index0 ],
+									... normals[ index1 ],
+									... normals[ index2 ]
+								);`;
+						} else {
+
+							parser += `
+							
+								const position0 = positions[ index0 ];
+								const position1 = positions[ index1 ];
+								const position2 = positions[ index2 ];
+								
+								const position0x = position0[ 0 ];
+								const position0y = position0[ 1 ];
+								const position0z = position0[ 2 ];
+								
+								const position1x = position1[ 0 ];
+								const position1y = position1[ 1 ];
+								const position1z = position1[ 2 ];
+								
+								const position2x = position2[ 0 ];
+								const position2y = position2[ 1 ];
+								const position2z = position2[ 2 ];
+								
+								finalPositions.push(
+									
+									position0x, position0y, position0z,
+									position1x, position1y, position1z,
+									position2x, position2y, position2z
+								);
+
+								const edge0x = position0x - position1x;
+								const edge0y = position0y - position1y;
+								const edge0z = position0z - position1z;
+
+								const edge1x = position0x - position2x;
+								const edge1y = position0y - position2y;
+								const edge1z = position0z - position2z;
+
+								const crossProductX = edge0y * edge1z - edge0z * edge1y;
+								const crossProductY = edge0z * edge1x - edge0x * edge1z;
+								const crossProductZ = edge0x * edge1y - edge0y * edge1x;
+								
+								const inverseHypotenuse = 1 / Math.sqrt(
+									
+									crossProductX * crossProductX +
+									crossProductY * crossProductY +
+									crossProductZ * crossProductZ
+								);
+
+								const normalX = crossProductX * inverseHypotenuse;
+								const normalY = crossProductY * inverseHypotenuse;
+								const normalZ = crossProductZ * inverseHypotenuse;
+								
+								finalNormals.push(
+									
+									normalX, normalY, normalZ,
+									normalX, normalY, normalZ,
+									normalX, normalY, normalZ
+								);`;
+						}
+
+						if ( hasTexcoords ) {
+
+							parser += `
+
+								finalTexcoords.push(
+									
+									... texcoords[ index0 ],
+									... texcoords[ index1 ],
+									... texcoords[ index2 ]
+								);`;
+						}
+
+						if ( hasColors ) {
+
+							parser += `
+
+								finalColors.push(
+									
+									... colors[ index0 ],
+									... colors[ index1 ],
+									... colors[ index2 ]
+								);`;
+						}
+
+						parser += "}";
+						break;
+				}
+
+				parser += `
+				
+						return ++offset < count;
+					};`;
+
+				parser = eval( parser );
+
+				while ( parser() );
+			});
+
+			const typeInfo = {
+
+				"char"   : Int8Array,
+				"int8"   : Int8Array,
+
+				"uchar"  : Uint8Array,
+				"uint8"  : Uint8Array,
+
+				"short"  : Int16Array,
+				"int16"  : Int16Array,
+
+				"ushort" : Uint16Array,
+				"uint16" : Uint16Array,
+
+				"int"    : Int32Array,
+				"int32"  : Int32Array,
+
+				"uint"   : Uint32Array,
+				"uint32" : Uint32Array,
+
+				"float"  : Float32Array,
+				"float32": Float32Array,
+
+				"double" : Float64Array,
+				"float64": Float64Array
+			};
+
+			const output = {
+
+				positions: new ( typeInfo[ positions.type ] )( finalPositions ),
+				normals  : new ( normals ? typeInfo[ normals.type ] : Float32Array )( finalNormals )
+			};
+
+			return output;
+		} else {
+
+			const endianness = text.slice( 18, 24 ) === "little";
+
+			const data = new DataView( await file.slice( header.length + 16 ).arrayBuffer() );
+
+			let offset = 0;
+
+			elements.forEach( element => {
+
+			});
+		}
 	}
 
 	async parseHdr ( hdrFile, path = "./Imports/" ) {
 
-		// https://en.wikipedia.org/wiki/Radiance_(software)#HDR_image_format
 		// http://paulbourke.net/dataformats/pic/
 		// https://programmersought.com/article/56978111948/
+		// https://github.com/Opioid/rgbe/blob/master/decode.go
 
 		hdrFile = path + hdrFile;
 
@@ -900,36 +1207,37 @@ export default class Parser {
 		} while ( stage < 2 );
 
 		const gamma     = ( header.match( /(?<=^GAMMA=).+/gm ) ?? [ 1 ] )[ 0 ];
+		const exposure  = ( header.match( /(?<=^EXPOSURE=).+/gm ) ?? [ 1 ] )[ 0 ];
 		const primaries = header.match( /(?<=^PRIMARIES=).+/gm );
 		const format    = header.match( /(?<=^FORMAT=).+/gm )[ 0 ];
 		const height    = header.match( /(?<=Y ).+?(?= )/gm )[ 0 ];
 		const width     = header.match( /(?<=X ).+?(?= |\n)/gm )[ 0 ];
 
-		bytes = bytes.slice( byteOffset );
-
 		console.log( format );
 
-		const getRGB = ( bytes ) => {
+		const getRGB = () => {
 
-			const e = bytes[ 3 ];
+			const e = bytes[ byteOffset + 3 ];
 
-			if ( e === 0 ) {
+			if ( !e ) {
+
+				byteOffset += 4;
 
 				return [ 0, 0, 0 ];
 			}
 
-			const f = 2 ** ( e - 136 );
+			const f = 1;
 
 			return [
 
-				bytes[ 0 ] * f,
-				bytes[ 1 ] * f,
-				bytes[ 2 ] * f 
+				bytes[ byteOffset++ ] * f,
+				bytes[ byteOffset++ ] * f,
+				bytes[ ( byteOffset += 2 ) - 2 ] * f 
 			];
 		};
 
-		let off = 1;
-
-		console.log( getRGB( bytes.slice( off, off + 4 ) ) );
+		console.log( getRGB() );
+		console.log( getRGB() );
+		console.log( getRGB() );
 	}
 };

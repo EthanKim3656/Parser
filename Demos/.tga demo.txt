@@ -1,0 +1,22 @@
+
+import Parser from "./Modules/parser.js";
+const parser = new Parser;
+
+const tga = await parser.parseTga( "sample_640×426.tga" );
+
+const {
+
+	width,
+	height,
+	data
+} = tga;
+
+const canvas = document.createElement( "canvas" );
+const ctx    = canvas.getContext( "2d" );
+
+canvas.width  = width;
+canvas.height = height;
+
+ctx.putImageData(new ImageData( data, width, height ), 0, 0);
+
+document.body.appendChild( canvas );

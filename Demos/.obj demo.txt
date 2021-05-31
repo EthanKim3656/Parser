@@ -27,7 +27,7 @@ const l_all = gl.getUniformLocation(program, "u_all");
 
 let rx = 0;
 let ry = -0.3;
-let cam = [0, -0.086, -0.1];
+let cam = [0, -2, -3];
 
 let down = 0;
 
@@ -52,9 +52,23 @@ renderer.canvas.addEventListener("mouseout", () => down = 0);
 
 const draw = [];
 
-const ply = await parser.parsePly("apple.ply");
+const obj = await parser.parseObj("lamp.obj");
 
-const vao = renderer.createVAO( program, ply.positions, ply.normals );
+const {
+
+	groups,
+	libraries
+} = obj;
+
+groups.forEach( group => {
+
+	group.geometry.forEach( object => {
+
+		const vao = renderer.createVAO( program, object.positions, object.normals );
+
+		draw.push( vao );
+	});
+});
 
 const scene = () => {
 
@@ -63,7 +77,7 @@ const scene = () => {
     gl.uniformMatrix4fv(l_all, false, all);
     gl.uniform3fv(l_cam, cam);
 
-	vao();
+	draw.forEach( i => i() );
 
 	window.requestAnimationFrame(scene);
 };

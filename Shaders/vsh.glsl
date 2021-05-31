@@ -10,7 +10,7 @@ uniform vec3 u_cam;
 out vec3 v_position;
 out vec2 v_texcoord;
 out vec3 v_normal;
-out vec3 v_cam;
+flat out vec3 v_cam;
 
 void main () {
 

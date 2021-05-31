@@ -5,7 +5,7 @@ precision lowp float;
 in vec3 v_position;
 in vec2 v_texcoord;
 in vec3 v_normal;
-in vec3 v_cam;
+flat in vec3 v_cam;
 
 out vec4 color;
 
