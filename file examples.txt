@@ -2,16 +2,17 @@
 https://people.math.sc.edu/Burkardt/data/data.html
 
 .obj files:
-	al.obj             - Materials/no texcoords test
-	manilla.obj        - No materials/no texcoords test
+	al.obj                  - Materials/no texcoords test
+	manilla.obj             - No materials/no texcoords test
 
 .tga files:
-	sample_640×426.tga - True-color test
-	football_seal.tga  - ColorMap test
-	shuttle.tga        - RLE test
+	sample_640×426.tga      - True-color test
+	football_seal.tga       - ColorMap test
+	shuttle.tga             - RLE test
 
 .ply files:
-	airplane.ply       - ASCII 1.0 test
+	apple.ply               - ASCII 1.0 test
+	model.ply               - binary_little_endian 1.0 test
 
 .hdr files:
-	sample_640×426.hdr
+	dani_cathedral_oBBC.hdr - 

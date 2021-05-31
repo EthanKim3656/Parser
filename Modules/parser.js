@@ -267,13 +267,13 @@ export default class Parser {
 
 				object.forEach( data => {
 
-					thisPositions.set( data.splice( 0, 9 ), positionIndex += 9 );
+					thisPositions.set( data.slice( 0, 9 ), positionIndex += 9 );
 
-					thisTexcoords.set( texcoords[ data[ 0 ] ], texcoordIndex += 2 );
-					thisTexcoords.set( texcoords[ data[ 1 ] ], texcoordIndex += 2 );
-					thisTexcoords.set( texcoords[ data[ 2 ] ], texcoordIndex += 2 );
+					thisTexcoords.set( texcoords[ data[ 9  ] ], texcoordIndex += 2 );
+					thisTexcoords.set( texcoords[ data[ 10 ] ], texcoordIndex += 2 );
+					thisTexcoords.set( texcoords[ data[ 11 ] ], texcoordIndex += 2 );
 
-					addNormals( data[ 3 ], data[ 4 ], data[ 5 ] );
+					addNormals( data[ 12 ], data[ 13 ], data[ 14 ] );
 				});
 
 				return {
@@ -310,9 +310,9 @@ export default class Parser {
 
 				object.forEach( data => {
 
-					thisPositions.set( data.splice( 0, 9 ), positionIndex += 9 );
+					thisPositions.set( data.slice( 0, 9 ), positionIndex += 9 );
 
-					addNormals( data[ 3 ], data[ 4 ], data[ 5 ] );
+					addNormals( data[ 12 ], data[ 13 ], data[ 14 ] );
 				});
 
 				return {
@@ -896,11 +896,11 @@ export default class Parser {
 				const name  = header[ 0 ];
 				const count = offset + +header[ 1 ];
 
-				let parser = `
-				
-					() => {
-						
-						const line = data[ offset ].trim().split\` \`;`;
+				let parser;
+
+				let normalGetter   = () => {};
+				let colorGetter    = () => {};
+				let texcoordGetter = () => {};
 
 				switch ( name ) {
 
@@ -932,14 +932,25 @@ export default class Parser {
 
 						positions.type = types[ xIndex ];
 
-						parser += `
+						parser = () => {
 						
+							const line = data[ offset ].trim().split` `;	
+
 							positions[ offset ] = [
 
-								line[ ${ xIndex } ],
-								line[ ${ yIndex } ],
-								line[ ${ zIndex } ]
-							];`;
+								line[ xIndex ],
+								line[ yIndex ],
+								line[ zIndex ]
+							];
+
+							normalGetter( line );
+
+							colorGetter( line );
+
+							texcoordGetter( line );
+
+							return ++offset < count;
+						};
 						
 						if ( hasNormals ) {
 
@@ -947,14 +958,15 @@ export default class Parser {
 
 							normals.type = types[ nxIndex ];
 
-							parser += `
+							normalGetter = line => {
 							
 								normals[ offset ] = [
-									
-									line[ ${ nxIndex } ],
-									line[ ${ nyIndex } ],
-									line[ ${ nzIndex } ]
-								];`;
+
+									line[ nxIndex ],
+									line[ nyIndex ],
+									line[ nzIndex ]
+								];
+							};
 						}
 						
 						if ( hasColors ) {
@@ -963,14 +975,15 @@ export default class Parser {
 
 							colors.type = types[ rIndex ];
 
-							parser += `
+							colorGetter = line => {
 							
 								colors[ offset ] = [
-									
-									line[ ${ rIndex } ],
-									line[ ${ gIndex } ],
-									line[ ${ bIndex } ]
-								];`;
+
+									line[ rIndex ],
+									line[ gIndex ],
+									line[ bIndex ]
+								];
+							};
 						}
 						
 						if ( hasTexcoords ) {
@@ -979,19 +992,22 @@ export default class Parser {
 
 							texcoords.type = types[ uIndex ];
 
-							parser += `
+							texcoordGetter = line => {
 							
-								texcoords[ offset ] = [
-									
-									line[ ${ uIndex } ],
-									line[ ${ vIndex } ]
-								];`;
+								colors[ offset ] = [
+
+									line[ uIndex ],
+									line[ vIndex ]
+								];
+							};
 						}
 						break;
 
 					case "face":
 
-						parser += `
+						parser = () => {
+						
+							const line = data[ offset ].trim().split` `;	
 						
 							const indices = line.slice( 1 );
 
@@ -1002,117 +1018,120 @@ export default class Parser {
 							
 							for ( ; --length; ) {
 								
-								const index1 = indices[ length ];`;
+								const index1 = indices[ length ];
 
-						if ( hasNormals ) {
+								normalGetter( index0, index1, index2 );
 
-							parser += `
+								colorGetter( index0, index1, index2 );
 
-								finalPositions.push(
-									
-									... positions[ index0 ],
-									... positions[ index1 ],
-									... positions[ index2 ]
-								);
+								texcoordGetter( index0, index1, index2 );
+							}
+
+							return ++offset < count;
+						};
+
+						normalGetter = hasNormals ?
+
+						( index0, index1, index2 ) => {
+
+							finalPositions.push(
+								
+								... positions[ index0 ],
+								... positions[ index1 ],
+								... positions[ index2 ]
+							);
+						
+							finalNormals.push(
+								
+								... normals[ index0 ],
+								... normals[ index1 ],
+								... normals[ index2 ]
+							);
+						} :
+
+						( index0, index1, index2 ) => {
 							
-								finalNormals.push(
-									
-									... normals[ index0 ],
-									... normals[ index1 ],
-									... normals[ index2 ]
-								);`;
-						} else {
-
-							parser += `
+							const position0 = positions[ index0 ];
+							const position1 = positions[ index1 ];
+							const position2 = positions[ index2 ];
 							
-								const position0 = positions[ index0 ];
-								const position1 = positions[ index1 ];
-								const position2 = positions[ index2 ];
+							const position0x = position0[ 0 ];
+							const position0y = position0[ 1 ];
+							const position0z = position0[ 2 ];
+							
+							const position1x = position1[ 0 ];
+							const position1y = position1[ 1 ];
+							const position1z = position1[ 2 ];
+							
+							const position2x = position2[ 0 ];
+							const position2y = position2[ 1 ];
+							const position2z = position2[ 2 ];
+							
+							finalPositions.push(
 								
-								const position0x = position0[ 0 ];
-								const position0y = position0[ 1 ];
-								const position0z = position0[ 2 ];
-								
-								const position1x = position1[ 0 ];
-								const position1y = position1[ 1 ];
-								const position1z = position1[ 2 ];
-								
-								const position2x = position2[ 0 ];
-								const position2y = position2[ 1 ];
-								const position2z = position2[ 2 ];
-								
-								finalPositions.push(
-									
-									position0x, position0y, position0z,
-									position1x, position1y, position1z,
-									position2x, position2y, position2z
-								);
+								position0x, position0y, position0z,
+								position1x, position1y, position1z,
+								position2x, position2y, position2z
+							);
 
-								const edge0x = position0x - position1x;
-								const edge0y = position0y - position1y;
-								const edge0z = position0z - position1z;
+							const edge0x = position0x - position1x;
+							const edge0y = position0y - position1y;
+							const edge0z = position0z - position1z;
 
-								const edge1x = position0x - position2x;
-								const edge1y = position0y - position2y;
-								const edge1z = position0z - position2z;
+							const edge1x = position0x - position2x;
+							const edge1y = position0y - position2y;
+							const edge1z = position0z - position2z;
 
-								const crossProductX = edge0y * edge1z - edge0z * edge1y;
-								const crossProductY = edge0z * edge1x - edge0x * edge1z;
-								const crossProductZ = edge0x * edge1y - edge0y * edge1x;
+							const crossProductX = edge0y * edge1z - edge0z * edge1y;
+							const crossProductY = edge0z * edge1x - edge0x * edge1z;
+							const crossProductZ = edge0x * edge1y - edge0y * edge1x;
+							
+							const inverseHypotenuse = 1 / Math.sqrt(
 								
-								const inverseHypotenuse = 1 / Math.sqrt(
-									
-									crossProductX * crossProductX +
-									crossProductY * crossProductY +
-									crossProductZ * crossProductZ
-								);
+								crossProductX * crossProductX +
+								crossProductY * crossProductY +
+								crossProductZ * crossProductZ
+							);
 
-								const normalX = crossProductX * inverseHypotenuse;
-								const normalY = crossProductY * inverseHypotenuse;
-								const normalZ = crossProductZ * inverseHypotenuse;
+							const normalX = crossProductX * inverseHypotenuse;
+							const normalY = crossProductY * inverseHypotenuse;
+							const normalZ = crossProductZ * inverseHypotenuse;
+							
+							finalNormals.push(
 								
-								finalNormals.push(
-									
-									normalX, normalY, normalZ,
-									normalX, normalY, normalZ,
-									normalX, normalY, normalZ
-								);`;
-						}
+								normalX, normalY, normalZ,
+								normalX, normalY, normalZ,
+								normalX, normalY, normalZ
+							);
+						};
 
 						if ( hasTexcoords ) {
 
-							parser += `
+							texcoordGetter = ( index0, index1, index2 ) => {
 
 								finalTexcoords.push(
 									
 									... texcoords[ index0 ],
 									... texcoords[ index1 ],
 									... texcoords[ index2 ]
-								);`;
+								);
+							};
 						}
 
 						if ( hasColors ) {
 
-							parser += `
+							colorGetter = ( index0, index1, index2 ) => {
 
 								finalColors.push(
 									
 									... colors[ index0 ],
 									... colors[ index1 ],
 									... colors[ index2 ]
-								);`;
+								);
+							};
 						}
-
-						parser += "}";
 						break;
 				}
-
-				parser += `
-				
-						return ++offset < count;
-					};`;
-
-				parser = eval( parser );
 
 				while ( parser() );
 			});
