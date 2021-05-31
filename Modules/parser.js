@@ -440,17 +440,17 @@ export default class Parser {
 
 			switch ( type ) {
 
-				case "f"     : newFace( data );               break;
+				case "f"     : void newFace( data );               break;
 
-				case "g"     : newObject();                   break;
+				case "g"     : void newObject();                   break;
 
-				case "o"     : newObject();                   break;
+				case "o"     : void newObject();                   break;
 
-				case "s"     : setSmooth( data );             break;
+				case "s"     : void setSmooth( data );             break;
 
-				case "mtllib": await materialLibrary( data ); break;
+				case "mtllib": void await materialLibrary( data ); break;
 
-				case "usemtl": useMaterial( data );           break;
+				case "usemtl": void useMaterial( data );           break;
 			}
 		}
 
@@ -943,13 +943,11 @@ export default class Parser {
 								line[ zIndex ]
 							];
 
-							normalGetter( line );
+							void normalGetter( line );
 
-							colorGetter( line );
+							void colorGetter( line );
 
-							texcoordGetter( line );
-
-							return ++offset < count;
+							void texcoordGetter( line );
 						};
 						
 						if ( hasNormals ) {
@@ -1020,14 +1018,12 @@ export default class Parser {
 								
 								const index1 = indices[ length ];
 
-								normalGetter( index0, index1, index2 );
+								void normalGetter( index0, index1, index2 );
 
-								colorGetter( index0, index1, index2 );
+								void colorGetter( index0, index1, index2 );
 
-								texcoordGetter( index0, index1, index2 );
+								void texcoordGetter( index0, index1, index2 );
 							}
-
-							return ++offset < count;
 						};
 
 						normalGetter = hasNormals ?
@@ -1133,7 +1129,7 @@ export default class Parser {
 						break;
 				}
 
-				while ( parser() );
+				for ( ; offset < count; offset++ ) void parser();
 			});
 
 			const typeInfo = {
