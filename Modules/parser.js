@@ -1,13 +1,8 @@
 
 /**
- *                     Parser.js
+ * parser.js
  * 
- *               Written by Ethan Kim
- * 
- *      github: https://github.com/EthanKim8683
- *           email: ethankim8683@gmail.com
- * 
- *              Last modified 5/23/2021
+ * Ethan Kim
  */
 
 export default class Parser {
@@ -337,16 +332,16 @@ export default class Parser {
 
 			let length = data.length;
 
-			const vertex0 = data[ 0 ];
-			let vertex2 = data[ --length ];
+			const index0 = data[ 0 ];
+			let index2 = data[ --length ];
 
 			for ( ; --length; ) {
 
-				const vertex1 = data[ length ];
+				const index1 = data[ length ];
 
-				thisObject.push( mapTriangle( vertex0, vertex1, vertex2 ) );
+				thisObject.push( mapTriangle( index0, index1, index2 ) );
 
-				vertex2 = vertex1;
+				index2 = index1;
 			}
 
 			thisObjectEmpty      = false;
@@ -884,9 +879,9 @@ export default class Parser {
 			let finalNormals   = [];
 			let finalColors    = [];
 
-			let hasTexcoords;
-			let hasNormals;
-			let hasColors;
+			let hasNormals   = false;
+			let hasColors    = false;
+			let hasTexcoords = false;
 
 			elements.forEach( element => {
 
@@ -1023,6 +1018,8 @@ export default class Parser {
 								void colorGetter( index0, index1, index2 );
 
 								void texcoordGetter( index0, index1, index2 );
+
+								index2 = index1;
 							}
 						};
 
@@ -1165,6 +1162,8 @@ export default class Parser {
 				normals  : new ( normals ? typeInfo[ normals.type ] : Float32Array )( finalNormals )
 			};
 
+			if ( hasTexcoords ) output.texcoords = new ( typeInfo[ texcoords.type ] )( finalTexcoords );
+
 			return output;
 		} else {
 
@@ -1173,10 +1172,348 @@ export default class Parser {
 			const data = new DataView( await file.slice( header.length + 16 ).arrayBuffer() );
 
 			let offset = 0;
+			let byteOffset = 0;
+
+			let positions;
+			let texcoords;
+			let normals;
+			let colors;
+
+			let finalPositions = [];
+			let finalTexcoords = [];
+			let finalNormals   = [];
+			let finalColors    = [];
+
+			let positionsType;
+			let normalsType   = false;
+			let colorsType    = false;
+			let texcoordsType = false;
 
 			elements.forEach( element => {
 
+				const header     = element.match( /.+/m )[ 0 ].split` `;
+				const properties = element.match( /(?<=^property ).+/gm ).map( i => i.split` ` );
+
+				const name  = header[ 0 ];
+				const count = offset + +header[ 1 ];
+
+				const typeInfo = {
+
+					"char"   : [ 1, "getInt8"   , Int8Array    ],
+					"int8"   : [ 1, "getInt8"   , Int8Array    ],
+
+					"uchar"  : [ 1, "getUint8"  , Uint8Array   ],
+					"uint8"  : [ 1, "getUint8"  , Uint8Array   ],
+
+					"short"  : [ 2, "getInt16"  , Int16Array   ],
+					"int16"  : [ 2, "getInt16"  , Int16Array   ],
+
+					"ushort" : [ 2, "getUint16" , Uint16Array  ],
+					"uint16" : [ 2, "getUint16" , Uint16Array  ],
+
+					"int"    : [ 4, "getInt32"  , Int32Array   ],
+					"int32"  : [ 4, "getInt32"  , Int32Array   ],
+
+					"uint"   : [ 4, "getUint32" , Uint32Array  ],
+					"uint32" : [ 4, "getUint32" , Uint32Array  ],
+
+					"float"  : [ 4, "getFloat32", Float32Array ],
+					"float32": [ 4, "getFloat32", Float32Array ],
+
+					"double" : [ 8, "getFloat64", Float64Array ],
+					"float64": [ 8, "getFloat64", Float64Array ]
+				};
+
+				switch ( name ) {
+
+					case "vertex":
+
+						let parseVertex = "";
+
+						properties.forEach( property => {
+
+							const type = typeInfo[ property[ 0 ] ];
+							const name = property[ 1 ];
+
+							let arrayName;
+
+							switch ( name ) {
+
+								case "x"  : case "y"    : case "z"   : 
+									
+									arrayName = "vertexPositions";
+
+									positionsType = type[ 2 ];
+									break;
+
+								case "nx" : case "ny"   : case "nz"  : 
+									
+									arrayName = "vertexNormals";
+
+									normalsType = type[ 2 ];
+									break;
+
+								case "red": case "green": case "blue": 
+								
+									arrayName = "vertexColors";
+
+									colorsType = type[ 2 ];
+									break;
+
+								case "s"  : case "t"    :
+									
+									arrayName = "vertexTexcoords"; 
+
+									texcoordsType = type[ 2 ];
+									break;
+							}
+
+							parseVertex += `
+							
+								${ arrayName }.push( data.${ type[ 1 ] }( byteOffset, ${ endianness } ) );
+
+								byteOffset += ${ type[ 0 ] };`;
+						});
+
+						let normalsPre   = "";
+						let colorsPre    = "";
+						let texcoordsPre = "";
+
+						let normalsPost   = "";
+						let colorsPost    = "";
+						let texcoordsPost = "";
+
+						positions = Array( count );
+
+						positions.type = positionsType;
+
+						if ( normalsType ) {
+
+							normalsPre = "const vertexNormals = [];";
+
+							normalsPost = "normals[ offset ] = vertexNormals;";
+
+							normals = Array( count );
+
+							normals.type = normalsType;
+						}
+
+						if ( colorsType ) {
+
+							colorsPre = "const vertexColors = [];";
+
+							colorsPost = "colors[ offset ] = vertexColors;";
+
+							colors = Array( count );
+
+							colors.type = colorsType;
+						}
+
+						if ( texcoordsType ) {
+
+							texcoordsPre = "const vertexTexcoords = [];";
+
+							texcoordsPost = "texcoords[ offset ] = vertexTexcoords;";
+
+							texcoords = Array( count );
+
+							texcoords.type = texcoordsType;
+						}
+
+						parseVertex = `
+						
+							() => {
+								
+								const vertexPositions = [];
+								
+								${ normalsPre   }
+								
+								${ colorsPre    }
+								
+								${ texcoordsPre }
+								
+								` + parseVertex + `
+								
+								positions[ offset ] = vertexPositions;
+								
+								${ normalsPost   }
+								
+								${ colorsPost    }
+								
+								${ texcoordsPost }
+								
+							};`;
+
+						parseVertex = eval( parseVertex );
+
+						for ( ; offset < count; offset++ ) void parseVertex();
+						break;
+
+					case "face":
+
+						let normalGetter   = () => {};
+						let colorGetter    = () => {};
+						let texcoordGetter = () => {};
+
+						const property = properties[ 0 ];
+
+						const countInfo = typeInfo[ property[ 1 ] ];
+
+						const countOffset = countInfo[ 0 ];
+						const countGetter = countInfo[ 1 ];
+
+						const dataInfo = typeInfo[ property[ 2 ] ];
+
+						const dataOffset = dataInfo[ 0 ];
+						const dataGetter = dataInfo[ 1 ];
+
+						const parseFace = () => {
+
+							const count = data[ countGetter ]( byteOffset, endianness );
+
+							byteOffset += countOffset;
+
+							const index0 = data[ dataGetter ]( byteOffset, endianness );
+
+							byteOffset += dataOffset;
+
+							let index1 = data[ dataGetter ]( byteOffset, endianness );
+
+							byteOffset += dataOffset;
+
+							let offset = 2;
+
+							for ( ; offset < count; offset++ ) {
+
+								const index2 = data[ dataGetter ]( byteOffset, endianness );
+
+								byteOffset += dataOffset;
+
+								void normalGetter( index0, index1, index2 );
+
+								void colorGetter( index0, index1, index2 );
+
+								void texcoordGetter( index0, index1, index2 );
+
+								index1 = index2;
+							}
+						}
+
+						normalGetter = normalsType ?
+
+						( index0, index1, index2 ) => {
+
+							finalPositions.push(
+								
+								... positions[ index0 ],
+								... positions[ index1 ],
+								... positions[ index2 ]
+							);
+						
+							finalNormals.push(
+								
+								... normals[ index0 ],
+								... normals[ index1 ],
+								... normals[ index2 ]
+							);
+						} :
+
+						( index0, index1, index2 ) => {
+							
+							const position0 = positions[ index0 ];
+							const position1 = positions[ index1 ];
+							const position2 = positions[ index2 ];
+							
+							const position0x = position0[ 0 ];
+							const position0y = position0[ 1 ];
+							const position0z = position0[ 2 ];
+							
+							const position1x = position1[ 0 ];
+							const position1y = position1[ 1 ];
+							const position1z = position1[ 2 ];
+							
+							const position2x = position2[ 0 ];
+							const position2y = position2[ 1 ];
+							const position2z = position2[ 2 ];
+							
+							finalPositions.push(
+								
+								position0x, position0y, position0z,
+								position1x, position1y, position1z,
+								position2x, position2y, position2z
+							);
+
+							const edge0x = position0x - position1x;
+							const edge0y = position0y - position1y;
+							const edge0z = position0z - position1z;
+
+							const edge1x = position0x - position2x;
+							const edge1y = position0y - position2y;
+							const edge1z = position0z - position2z;
+
+							const crossProductX = edge0y * edge1z - edge0z * edge1y;
+							const crossProductY = edge0z * edge1x - edge0x * edge1z;
+							const crossProductZ = edge0x * edge1y - edge0y * edge1x;
+							
+							const inverseHypotenuse = 1 / Math.sqrt(
+								
+								crossProductX * crossProductX +
+								crossProductY * crossProductY +
+								crossProductZ * crossProductZ
+							);
+
+							const normalX = crossProductX * inverseHypotenuse;
+							const normalY = crossProductY * inverseHypotenuse;
+							const normalZ = crossProductZ * inverseHypotenuse;
+							
+							finalNormals.push(
+								
+								normalX, normalY, normalZ,
+								normalX, normalY, normalZ,
+								normalX, normalY, normalZ
+							);
+						};
+
+						if ( texcoordsType ) {
+
+							texcoordGetter = ( index0, index1, index2 ) => {
+
+								finalTexcoords.push(
+									
+									... texcoords[ index0 ],
+									... texcoords[ index1 ],
+									... texcoords[ index2 ]
+								);
+							};
+						}
+
+						if ( colorsType ) {
+
+							colorGetter = ( index0, index1, index2 ) => {
+
+								finalColors.push(
+									
+									... colors[ index0 ],
+									... colors[ index1 ],
+									... colors[ index2 ]
+								);
+							};
+						}
+
+						for ( ; offset < count; offset++ ) void parseFace();
+						break;
+				}
 			});
+
+			const output = {
+
+				positions: new ( positions.type )( finalPositions ),
+				normals  : new ( normals ? normals.type : Float32Array )( finalNormals )
+			};
+
+			if ( texcoordsType ) output.texcoords = new ( typeInfo[ texcoords.type ] )( finalTexcoords );
+
+			return output;
 		}
 	}
 
